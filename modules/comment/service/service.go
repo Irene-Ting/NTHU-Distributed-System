@@ -132,12 +132,6 @@ gRPC TODO:
 2. Return the response.
 */
 func (s *service) DeleteCommentByVideoID(ctx context.Context, req *pb.DeleteCommentByVideoIDRequest) (*pb.DeleteCommentByVideoIDResponse, error) {
-	// _, err := s.videoClient.GetVideo(ctx, &videopb.GetVideoRequest{Id: req.VideoId})
-
-	// if err != nil {
-	// 	return nil, err
-	// }
-
 	if err := s.commentDAO.DeleteByVideoID(ctx, req.VideoId); err != nil {
 		return nil, err
 	}
