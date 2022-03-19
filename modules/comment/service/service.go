@@ -69,12 +69,12 @@ func (s *service) CreateComment(ctx context.Context, req *pb.CreateCommentReques
 		Content: req.Content,
 	}
 
-	uuid, err := s.commentDAO.Create(ctx, comment)
+	id, err := s.commentDAO.Create(ctx, comment)
 	if err != nil {
 		return nil, err
 	}
 
-	return &pb.CreateCommentResponse{Id: uuid.String()}, nil
+	return &pb.CreateCommentResponse{Id: id.String()}, nil
 }
 
 /*
