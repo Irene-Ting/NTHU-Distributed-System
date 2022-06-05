@@ -10,6 +10,7 @@ import (
 	"github.com/NTHU-LSALAB/NTHU-Distributed-System/modules/video/pb"
 	"github.com/NTHU-LSALAB/NTHU-Distributed-System/modules/video/service"
 	"github.com/NTHU-LSALAB/NTHU-Distributed-System/pkg/grpckit"
+	"github.com/NTHU-LSALAB/NTHU-Distributed-System/pkg/kafkakit"
 	"github.com/NTHU-LSALAB/NTHU-Distributed-System/pkg/logkit"
 	"github.com/NTHU-LSALAB/NTHU-Distributed-System/pkg/mongokit"
 	"github.com/NTHU-LSALAB/NTHU-Distributed-System/pkg/otelkit"
@@ -25,7 +26,7 @@ import (
 func newAPICommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "api",
-		Short: "starts Video API server",
+		Short: "starts video API server",
 		RunE:  runAPI,
 	}
 }
@@ -39,6 +40,7 @@ type APIArgs struct {
 	storagekit.MinIOConfig               `group:"minio" namespace:"minio" env-namespace:"MINIO"`
 	rediskit.RedisConfig                 `group:"redis" namespace:"redis" env-namespace:"REDIS"`
 	otelkit.PrometheusServiceMeterConfig `group:"meter" namespace:"meter" env-namespace:"METER"`
+	kafkakit.KafkaProducerConfig         `group:"kafka_producer" namespace:"kafka_producer" env-namespace:"KAFKA_PRODUCER"`
 }
 
 func runAPI(_ *cobra.Command, _ []string) error {
@@ -51,9 +53,7 @@ func runAPI(_ *cobra.Command, _ []string) error {
 
 	logger := logkit.NewLogger(&args.LoggerConfig)
 	defer func() {
-		if err := logger.Sync(); err != nil {
-			log.Fatal("failed to sync logger", err.Error())
-		}
+		_ = logger.Sync()
 	}()
 
 	ctx = logger.WithContext(ctx)
@@ -79,12 +79,19 @@ func runAPI(_ *cobra.Command, _ []string) error {
 		}
 	}()
 
+	producer := kafkakit.NewKafkaProducer(ctx, &args.KafkaProducerConfig)
+	defer func() {
+		if err := producer.Close(); err != nil {
+			logger.Fatal("failed to close Kafka producer", zap.Error(err))
+		}
+	}()
+
 	mongoVideoDAO := dao.NewMongoVideoDAO(mongoClient.Database().Collection("videos"))
 	videoDAO := dao.NewRedisVideoDAO(redisClient, mongoVideoDAO)
 	storage := storagekit.NewMinIOClient(ctx, &args.MinIOConfig)
 	commentClient := commentpb.NewCommentClient(commentClientConn)
 
-	svc := service.NewService(videoDAO, storage, commentClient)
+	svc := service.NewService(videoDAO, storage, commentClient, producer)
 
 	logger.Info("listen to gRPC addr", zap.String("grpc_addr", args.GRPCAddr))
 	lis, err := net.Listen("tcp", args.GRPCAddr)
